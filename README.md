@@ -1,36 +1,26 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cool Jam 🌙
 
-## Getting Started
+잠 못 드는 밤을 위한 수면 보조 웹앱.
 
-First, run the development server:
+## 기능
+
+- **사운드 믹서** — 빗소리, 파도 소리, 백색·핑크·브라운 노이즈, 명상 톤을 자유롭게 섞을 수 있어요. Web Audio API로 실시간 합성되므로 외부 파일이 필요 없습니다.
+- **4-7-8 호흡 가이드** — 4초 들이쉬고, 7초 멈추고, 8초 내쉬는 호흡법을 시각적인 원으로 안내해요.
+- **슬립 타이머** — 지정한 시간 후 소리가 부드럽게 사라지며 자연스럽게 잠들 수 있도록 도와줘요.
+
+## 개발
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+브라우저에서 [http://localhost:3000](http://localhost:3000) 으로 접속하세요.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 기술 스택
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Next.js 16 (App Router) + Turbopack
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- Web Audio API
