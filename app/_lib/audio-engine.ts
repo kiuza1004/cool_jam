@@ -8,7 +8,10 @@ export type SoundId =
   | "vacuum"
   | "chimes"
   | "fireplace"
-  | "fan";
+  | "fan"
+  | "wind"
+  | "thunder"
+  | "stream";
 
 export interface SoundMeta {
   id: SoundId;
@@ -19,7 +22,10 @@ export interface SoundMeta {
 
 export const SOUNDS: SoundMeta[] = [
   { id: "rain", label: "빗소리", emoji: "🌧️", description: "잔잔한 비" },
+  { id: "thunder", label: "천둥", emoji: "⛈️", description: "먼 우레 소리" },
   { id: "waves", label: "파도 소리", emoji: "🌊", description: "느린 파도" },
+  { id: "stream", label: "시냇물", emoji: "💧", description: "졸졸 흐르는 물" },
+  { id: "wind", label: "바람", emoji: "🌬️", description: "스치는 바람" },
   { id: "fireplace", label: "모닥불", emoji: "🔥", description: "타닥거리는 장작" },
   { id: "vacuum", label: "청소기 소리", emoji: "🌀", description: "꾸준한 모터음" },
   { id: "fan", label: "선풍기", emoji: "💨", description: "부드러운 바람" },
@@ -433,6 +439,182 @@ export class AudioEngine {
           if (timer) clearTimeout(timer);
         },
         volume: 0.55,
+        active: false,
+      };
+    }
+
+    if (id === "wind") {
+      // pink noise through swept bandpass + gust LFO
+      const noise = makeNoiseSource(ctx, "pink");
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 700;
+      bp.Q.value = 0.7;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 1800;
+
+      // filter-frequency LFO (sweeping)
+      const sweepLfo = ctx.createOscillator();
+      sweepLfo.frequency.value = 0.08;
+      const sweepAmp = ctx.createGain();
+      sweepAmp.gain.value = 400;
+      sweepLfo.connect(sweepAmp);
+      sweepAmp.connect(bp.frequency);
+
+      // gain LFO (gusts)
+      const windAmp = ctx.createGain();
+      windAmp.gain.value = 0.6;
+      const gustLfo = ctx.createOscillator();
+      gustLfo.frequency.value = 0.15;
+      const gustAmp = ctx.createGain();
+      gustAmp.gain.value = 0.35;
+      gustLfo.connect(gustAmp);
+      gustAmp.connect(windAmp.gain);
+
+      noise.connect(bp);
+      bp.connect(lp);
+      lp.connect(windAmp);
+      windAmp.connect(gain);
+
+      return {
+        gain,
+        start: () => {
+          noise.start();
+          sweepLfo.start();
+          gustLfo.start();
+        },
+        stop: () => {
+          try {
+            noise.stop();
+          } catch {}
+          try {
+            sweepLfo.stop();
+          } catch {}
+          try {
+            gustLfo.stop();
+          } catch {}
+          noise.disconnect();
+          sweepLfo.disconnect();
+          gustLfo.disconnect();
+        },
+        volume: 0.6,
+        active: false,
+      };
+    }
+
+    if (id === "thunder") {
+      // distant low rumble + occasional booms
+      const rumble = makeNoiseSource(ctx, "brown");
+      const rumbleLp = ctx.createBiquadFilter();
+      rumbleLp.type = "lowpass";
+      rumbleLp.frequency.value = 180;
+      const rumbleGain = ctx.createGain();
+      rumbleGain.gain.value = 0.45;
+      rumble.connect(rumbleLp);
+      rumbleLp.connect(rumbleGain);
+      rumbleGain.connect(gain);
+
+      let stopped = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      const playBoom = () => {
+        const now = ctx.currentTime;
+        const burst = makeNoiseSource(ctx, "brown");
+        const lp = ctx.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.setValueAtTime(400, now);
+        lp.frequency.exponentialRampToValueAtTime(80, now + 4);
+        const env = ctx.createGain();
+        const peak = 0.5 + Math.random() * 0.5;
+        const duration = 3 + Math.random() * 3;
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.exponentialRampToValueAtTime(peak, now + 0.4);
+        env.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+        burst.connect(lp);
+        lp.connect(env);
+        env.connect(gain);
+        burst.start(now);
+        burst.stop(now + duration + 0.2);
+      };
+
+      const scheduleNext = () => {
+        if (stopped) return;
+        const delay = 12000 + Math.random() * 28000;
+        timer = setTimeout(() => {
+          if (stopped) return;
+          playBoom();
+          scheduleNext();
+        }, delay);
+      };
+
+      return {
+        gain,
+        start: () => {
+          stopped = false;
+          rumble.start();
+          // first boom within 4-10s so it feels alive
+          timer = setTimeout(() => {
+            if (stopped) return;
+            playBoom();
+            scheduleNext();
+          }, 4000 + Math.random() * 6000);
+        },
+        stop: () => {
+          stopped = true;
+          if (timer) clearTimeout(timer);
+          try {
+            rumble.stop();
+          } catch {}
+          rumble.disconnect();
+        },
+        volume: 0.55,
+        active: false,
+      };
+    }
+
+    if (id === "stream") {
+      // bright trickling water = bandpass-shaped white noise + slow trickle LFO
+      const noise = makeNoiseSource(ctx, "white");
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 1500;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 3500;
+      bp.Q.value = 1.2;
+      const streamGain = ctx.createGain();
+      streamGain.gain.value = 0.55;
+
+      const trickleLfo = ctx.createOscillator();
+      trickleLfo.frequency.value = 4.5;
+      const trickleAmp = ctx.createGain();
+      trickleAmp.gain.value = 600;
+      trickleLfo.connect(trickleAmp);
+      trickleAmp.connect(bp.frequency);
+
+      noise.connect(hp);
+      hp.connect(bp);
+      bp.connect(streamGain);
+      streamGain.connect(gain);
+
+      return {
+        gain,
+        start: () => {
+          noise.start();
+          trickleLfo.start();
+        },
+        stop: () => {
+          try {
+            noise.stop();
+          } catch {}
+          try {
+            trickleLfo.stop();
+          } catch {}
+          noise.disconnect();
+          trickleLfo.disconnect();
+        },
+        volume: 0.6,
         active: false,
       };
     }
