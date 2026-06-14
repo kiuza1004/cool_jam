@@ -1,4 +1,14 @@
-export type SoundId = "white" | "pink" | "brown" | "rain" | "waves" | "tone";
+export type SoundId =
+  | "white"
+  | "pink"
+  | "brown"
+  | "rain"
+  | "waves"
+  | "tone"
+  | "vacuum"
+  | "chimes"
+  | "fireplace"
+  | "fan";
 
 export interface SoundMeta {
   id: SoundId;
@@ -10,6 +20,10 @@ export interface SoundMeta {
 export const SOUNDS: SoundMeta[] = [
   { id: "rain", label: "빗소리", emoji: "🌧️", description: "잔잔한 비" },
   { id: "waves", label: "파도 소리", emoji: "🌊", description: "느린 파도" },
+  { id: "fireplace", label: "모닥불", emoji: "🔥", description: "타닥거리는 장작" },
+  { id: "vacuum", label: "청소기 소리", emoji: "🌀", description: "꾸준한 모터음" },
+  { id: "fan", label: "선풍기", emoji: "💨", description: "부드러운 바람" },
+  { id: "chimes", label: "풍경 소리", emoji: "🎐", description: "은은한 메탈 종" },
   { id: "brown", label: "브라운 노이즈", emoji: "🟫", description: "깊고 묵직" },
   { id: "pink", label: "핑크 노이즈", emoji: "🌸", description: "따뜻한 잡음" },
   { id: "white", label: "백색 소음", emoji: "⚪", description: "균일한 잡음" },
@@ -188,6 +202,237 @@ export class AudioEngine {
           lfo.disconnect();
         },
         volume: 0.65,
+        active: false,
+      };
+    }
+
+    if (id === "vacuum") {
+      // motor hum (sawtooth ~105Hz with slight vibrato) + suction (high-passed white)
+      const hum = ctx.createOscillator();
+      hum.type = "sawtooth";
+      hum.frequency.value = 105;
+      const humGain = ctx.createGain();
+      humGain.gain.value = 0.05;
+      const vibrato = ctx.createOscillator();
+      vibrato.type = "sine";
+      vibrato.frequency.value = 5;
+      const vibratoAmp = ctx.createGain();
+      vibratoAmp.gain.value = 1.5;
+      vibrato.connect(vibratoAmp);
+      vibratoAmp.connect(hum.frequency);
+      hum.connect(humGain);
+
+      const noise = makeNoiseSource(ctx, "white");
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 1400;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 7500;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.value = 0.55;
+      noise.connect(hp);
+      hp.connect(lp);
+      lp.connect(noiseGain);
+
+      humGain.connect(gain);
+      noiseGain.connect(gain);
+      return {
+        gain,
+        start: () => {
+          hum.start();
+          vibrato.start();
+          noise.start();
+        },
+        stop: () => {
+          try {
+            hum.stop();
+          } catch {}
+          try {
+            vibrato.stop();
+          } catch {}
+          try {
+            noise.stop();
+          } catch {}
+          hum.disconnect();
+          vibrato.disconnect();
+          noise.disconnect();
+        },
+        volume: 0.45,
+        active: false,
+      };
+    }
+
+    if (id === "fan") {
+      // gentle low hum + soft airflow
+      const hum = ctx.createOscillator();
+      hum.type = "sine";
+      hum.frequency.value = 70;
+      const humGain = ctx.createGain();
+      humGain.gain.value = 0.12;
+      hum.connect(humGain);
+
+      const noise = makeNoiseSource(ctx, "pink");
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 600;
+      bp.Q.value = 0.8;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.value = 0.7;
+      // gentle airflow LFO
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.4;
+      const lfoAmp = ctx.createGain();
+      lfoAmp.gain.value = 0.15;
+      lfo.connect(lfoAmp);
+      lfoAmp.connect(noiseGain.gain);
+      noise.connect(bp);
+      bp.connect(noiseGain);
+
+      humGain.connect(gain);
+      noiseGain.connect(gain);
+      return {
+        gain,
+        start: () => {
+          hum.start();
+          noise.start();
+          lfo.start();
+        },
+        stop: () => {
+          try {
+            hum.stop();
+          } catch {}
+          try {
+            noise.stop();
+          } catch {}
+          try {
+            lfo.stop();
+          } catch {}
+          hum.disconnect();
+          noise.disconnect();
+          lfo.disconnect();
+        },
+        volume: 0.55,
+        active: false,
+      };
+    }
+
+    if (id === "fireplace") {
+      // base low rumble + random "crackle" pops
+      const noise = makeNoiseSource(ctx, "brown");
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 500;
+      const baseGain = ctx.createGain();
+      baseGain.gain.value = 0.55;
+      noise.connect(lp);
+      lp.connect(baseGain);
+      baseGain.connect(gain);
+
+      let stopped = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const scheduleCrackle = () => {
+        if (stopped) return;
+        const delay = 80 + Math.random() * 400;
+        timer = setTimeout(() => {
+          if (stopped) return;
+          const now = ctx.currentTime;
+          const burst = ctx.createBufferSource();
+          const buf = ctx.createBuffer(1, ctx.sampleRate * 0.08, ctx.sampleRate);
+          const data = buf.getChannelData(0);
+          for (let i = 0; i < data.length; i++) {
+            data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+          }
+          burst.buffer = buf;
+          const hp = ctx.createBiquadFilter();
+          hp.type = "highpass";
+          hp.frequency.value = 1800;
+          const env = ctx.createGain();
+          const peak = 0.25 + Math.random() * 0.45;
+          env.gain.setValueAtTime(0.0001, now);
+          env.gain.exponentialRampToValueAtTime(peak, now + 0.005);
+          env.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+          burst.connect(hp);
+          hp.connect(env);
+          env.connect(gain);
+          burst.start(now);
+          burst.stop(now + 0.13);
+          scheduleCrackle();
+        }, delay);
+      };
+
+      return {
+        gain,
+        start: () => {
+          stopped = false;
+          noise.start();
+          scheduleCrackle();
+        },
+        stop: () => {
+          stopped = true;
+          if (timer) clearTimeout(timer);
+          try {
+            noise.stop();
+          } catch {}
+          noise.disconnect();
+        },
+        volume: 0.6,
+        active: false,
+      };
+    }
+
+    if (id === "chimes") {
+      // pentatonic chimes, randomly triggered
+      const notes = [523.25, 587.33, 659.25, 783.99, 880.0]; // C5 D5 E5 G5 A5
+      let stopped = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      const playChime = () => {
+        const now = ctx.currentTime;
+        const freq = notes[Math.floor(Math.random() * notes.length)];
+        const decay = 2.4 + Math.random() * 1.6;
+        for (let i = 0; i < 2; i++) {
+          const osc = ctx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.value = freq * (i === 0 ? 1 : 2.01);
+          const env = ctx.createGain();
+          const peak = i === 0 ? 0.35 : 0.1;
+          env.gain.setValueAtTime(0.0001, now);
+          env.gain.exponentialRampToValueAtTime(peak, now + 0.01);
+          env.gain.exponentialRampToValueAtTime(0.0001, now + decay);
+          osc.connect(env);
+          env.connect(gain);
+          osc.start(now);
+          osc.stop(now + decay + 0.1);
+        }
+      };
+
+      const scheduleNext = () => {
+        if (stopped) return;
+        const delay = 1800 + Math.random() * 4500;
+        timer = setTimeout(() => {
+          if (stopped) return;
+          playChime();
+          scheduleNext();
+        }, delay);
+      };
+
+      return {
+        gain,
+        start: () => {
+          stopped = false;
+          // first chime delayed slightly so it's not abrupt
+          timer = setTimeout(() => {
+            if (stopped) return;
+            playChime();
+            scheduleNext();
+          }, 800);
+        },
+        stop: () => {
+          stopped = true;
+          if (timer) clearTimeout(timer);
+        },
+        volume: 0.55,
         active: false,
       };
     }
