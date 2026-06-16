@@ -23,10 +23,12 @@ export function SoundMixer() {
   };
 
   const anyActive = engine?.anyActive() ?? false;
+  const masterVolume = Math.round((engine?.getMasterVolume() ?? 1) * 100);
+  const muted = engine?.isMuted() ?? false;
 
   return (
     <section className="glass rounded-3xl p-5 sm:p-7">
-      <header className="flex items-center justify-between mb-5">
+      <header className="flex flex-wrap items-start justify-between gap-4 mb-5">
         <div>
           <h2 className="text-lg sm:text-xl font-semibold tracking-tight">
             사운드 믹서
@@ -35,14 +37,45 @@ export function SoundMixer() {
             마음에 드는 소리를 골라 자유롭게 섞어보세요
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onStop}
-          disabled={!anyActive}
-          className="text-xs px-3 py-1.5 rounded-full border border-white/15 text-[var(--fg-muted)] hover:text-white hover:border-white/30 transition disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          전체 정지
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => engine?.toggleMuted()}
+            disabled={!engine}
+            aria-pressed={muted}
+            aria-label={muted ? "음소거 해제" : "음소거"}
+            title={muted ? "음소거 해제" : "음소거"}
+            className={`w-9 h-9 rounded-full border flex items-center justify-center transition ${
+              muted
+                ? "border-[color:var(--accent)]/60 bg-white/10 text-white"
+                : "border-white/15 text-[var(--fg-muted)] hover:text-white hover:border-white/30"
+            }`}
+          >
+            {muted ? "🔇" : "🔊"}
+          </button>
+          <div className="flex items-center gap-2 min-w-[140px]">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={masterVolume}
+              onChange={(e) => engine?.setMasterVolume(Number(e.target.value) / 100)}
+              aria-label="마스터 볼륨"
+              disabled={!engine}
+            />
+            <span className="text-[11px] text-[var(--fg-muted)] tabular-nums w-8 text-right">
+              {masterVolume}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onStop}
+            disabled={!anyActive}
+            className="text-xs px-3 py-1.5 rounded-full border border-white/15 text-[var(--fg-muted)] hover:text-white hover:border-white/30 transition disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            전체 정지
+          </button>
+        </div>
       </header>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">

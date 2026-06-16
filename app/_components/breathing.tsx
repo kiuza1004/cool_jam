@@ -2,32 +2,72 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const PHASES = [
-  { key: "in", label: "들이쉬기", duration: 4000, scale: 1.35 },
-  { key: "hold", label: "멈추기", duration: 7000, scale: 1.35 },
-  { key: "out", label: "내쉬기", duration: 8000, scale: 0.7 },
-] as const;
+interface Phase {
+  key: string;
+  label: string;
+  duration: number;
+  scale: number;
+}
+
+interface Pattern {
+  id: string;
+  label: string;
+  description: string;
+  phases: readonly Phase[];
+}
+
+const PATTERNS: readonly Pattern[] = [
+  {
+    id: "478",
+    label: "4-7-8",
+    description: "4초 들이쉬고, 7초 멈추고, 8초 내쉬어요",
+    phases: [
+      { key: "in", label: "들이쉬기", duration: 4000, scale: 1.35 },
+      { key: "hold", label: "멈추기", duration: 7000, scale: 1.35 },
+      { key: "out", label: "내쉬기", duration: 8000, scale: 0.7 },
+    ],
+  },
+  {
+    id: "box",
+    label: "박스",
+    description: "4초씩 들이쉬고, 멈추고, 내쉬고, 다시 멈춰요",
+    phases: [
+      { key: "in", label: "들이쉬기", duration: 4000, scale: 1.35 },
+      { key: "hold-in", label: "멈추기", duration: 4000, scale: 1.35 },
+      { key: "out", label: "내쉬기", duration: 4000, scale: 0.7 },
+      { key: "hold-out", label: "멈추기", duration: 4000, scale: 0.7 },
+    ],
+  },
+  {
+    id: "resonance",
+    label: "공명",
+    description: "5.5초 들이쉬고 5.5초 내쉬며 심박을 안정시켜요",
+    phases: [
+      { key: "in", label: "들이쉬기", duration: 5500, scale: 1.35 },
+      { key: "out", label: "내쉬기", duration: 5500, scale: 0.7 },
+    ],
+  },
+];
 
 export function Breathing() {
+  const [patternId, setPatternId] = useState<string>("478");
   const [running, setRunning] = useState(false);
   const [phaseIdx, setPhaseIdx] = useState(0);
   const [countdown, setCountdown] = useState(4);
   const phaseTimer = useRef<number | null>(null);
   const tickTimer = useRef<number | null>(null);
 
+  const pattern = PATTERNS.find((p) => p.id === patternId) ?? PATTERNS[0];
+
   useEffect(() => {
-    if (!running) {
-      setPhaseIdx(0);
-      setCountdown(4);
-      return;
-    }
+    if (!running) return;
     let cancelled = false;
     let idx = 0;
 
     const runPhase = () => {
       if (cancelled) return;
       setPhaseIdx(idx);
-      const phase = PHASES[idx];
+      const phase = pattern.phases[idx];
       let remaining = phase.duration;
       setCountdown(Math.ceil(remaining / 1000));
       tickTimer.current = window.setInterval(() => {
@@ -36,7 +76,7 @@ export function Breathing() {
       }, 1000);
       phaseTimer.current = window.setTimeout(() => {
         if (tickTimer.current) window.clearInterval(tickTimer.current);
-        idx = (idx + 1) % PHASES.length;
+        idx = (idx + 1) % pattern.phases.length;
         runPhase();
       }, phase.duration);
     };
@@ -47,9 +87,9 @@ export function Breathing() {
       if (phaseTimer.current) window.clearTimeout(phaseTimer.current);
       if (tickTimer.current) window.clearInterval(tickTimer.current);
     };
-  }, [running]);
+  }, [running, pattern]);
 
-  const phase = PHASES[phaseIdx];
+  const phase = pattern.phases[phaseIdx] ?? pattern.phases[0];
   const displayScale = running ? phase.scale : 0.85;
   const transitionMs = running ? phase.duration : 600;
 
@@ -57,12 +97,34 @@ export function Breathing() {
     <section className="glass rounded-3xl p-5 sm:p-7 flex flex-col">
       <header>
         <h2 className="text-lg sm:text-xl font-semibold tracking-tight">
-          4-7-8 호흡
+          호흡 가이드
         </h2>
         <p className="text-sm text-[var(--fg-muted)] mt-1">
-          4초 들이쉬고, 7초 멈추고, 8초 내쉬어요
+          {pattern.description}
         </p>
       </header>
+
+      <div className="flex gap-2 mt-4">
+        {PATTERNS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => {
+              if (running) return;
+              setPatternId(p.id);
+            }}
+            disabled={running}
+            aria-pressed={p.id === patternId}
+            className={`flex-1 py-1.5 rounded-lg text-xs transition border ${
+              p.id === patternId
+                ? "border-[color:var(--accent)]/60 bg-white/10 text-white"
+                : "border-white/10 bg-white/5 text-[var(--fg-muted)] hover:bg-white/10 hover:text-white"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
 
       <div className="flex-1 flex items-center justify-center py-10">
         <div className="relative w-60 h-60 flex items-center justify-center">

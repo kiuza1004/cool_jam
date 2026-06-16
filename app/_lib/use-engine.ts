@@ -4,10 +4,9 @@ import { useEffect, useState } from "react";
 import { AudioEngine, getAudioEngine } from "./audio-engine";
 
 export function useAudioEngine(): AudioEngine | null {
-  const [engine, setEngine] = useState<AudioEngine | null>(null);
-  useEffect(() => {
-    setEngine(getAudioEngine());
-  }, []);
+  const [engine] = useState<AudioEngine | null>(() =>
+    typeof window === "undefined" ? null : getAudioEngine(),
+  );
   return engine;
 }
 

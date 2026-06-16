@@ -20,12 +20,6 @@ export function SleepTimer() {
 
   useEffect(() => {
     if (remaining === null) return;
-    if (remaining <= 0) {
-      if (tickRef.current) window.clearInterval(tickRef.current);
-      setRemaining(null);
-      fadeStartedRef.current = false;
-      return;
-    }
     if (!fadeStartedRef.current && remaining <= 20 && engine) {
       engine.fadeOutAndStop(Math.max(5, remaining));
       fadeStartedRef.current = true;
@@ -39,7 +33,15 @@ export function SleepTimer() {
     fadeStartedRef.current = false;
     setRemaining(minutes * 60);
     tickRef.current = window.setInterval(() => {
-      setRemaining((r) => (r === null ? null : r - 1));
+      setRemaining((r) => {
+        if (r === null) return null;
+        if (r <= 1) {
+          if (tickRef.current) window.clearInterval(tickRef.current);
+          fadeStartedRef.current = false;
+          return null;
+        }
+        return r - 1;
+      });
     }, 1000);
   };
 

@@ -13,7 +13,10 @@ export type SoundId =
   | "thunder"
   | "stream"
   | "hail"
-  | "bell";
+  | "bell"
+  | "crickets"
+  | "birds"
+  | "clock";
 
 export interface SoundMeta {
   id: SoundId;
@@ -30,8 +33,11 @@ export const SOUNDS: SoundMeta[] = [
   { id: "stream", label: "시냇물", emoji: "💧", description: "졸졸 흐르는 물" },
   { id: "wind", label: "바람", emoji: "🌬️", description: "느린 바람" },
   { id: "fireplace", label: "모닥불", emoji: "🔥", description: "타닥거리는 장작" },
+  { id: "crickets", label: "귀뚜라미", emoji: "🦗", description: "여름밤 풀숲" },
+  { id: "birds", label: "새벽 새소리", emoji: "🐦", description: "아침의 지저귐" },
   { id: "vacuum", label: "청소기 소리", emoji: "🌀", description: "꾸준한 모터음" },
   { id: "fan", label: "선풍기", emoji: "💨", description: "부드러운 바람" },
+  { id: "clock", label: "시계 똑딱", emoji: "⏰", description: "규칙적인 초침" },
   { id: "chimes", label: "풍경 소리", emoji: "🎐", description: "은은한 메탈 종" },
   { id: "bell", label: "교회 종소리", emoji: "⛪", description: "성당의 묵직한 종" },
   { id: "brown", label: "브라운 노이즈", emoji: "🟫", description: "깊고 묵직" },
@@ -97,9 +103,21 @@ interface Track {
   active: boolean;
 }
 
+export interface SoundSnapshotEntry {
+  id: SoundId;
+  volume: number;
+}
+
+export interface AudioSnapshot {
+  active: SoundSnapshotEntry[];
+}
+
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private fadeGain: GainNode | null = null;
+  private userVolume = 1;
+  private muted = false;
   private tracks = new Map<SoundId, Track>();
   private listeners = new Set<() => void>();
   private fadeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -123,8 +141,11 @@ export class AudioEngine {
       if (!Ctx) throw new Error("Web Audio API not supported in this browser");
       this.ctx = new Ctx();
       this.master = this.ctx.createGain();
-      this.master.gain.value = 1;
-      this.master.connect(this.ctx.destination);
+      this.master.gain.value = this.muted ? 0 : this.userVolume;
+      this.fadeGain = this.ctx.createGain();
+      this.fadeGain.gain.value = 1;
+      this.master.connect(this.fadeGain);
+      this.fadeGain.connect(this.ctx.destination);
     }
     if (this.ctx.state === "suspended") await this.ctx.resume();
     return this.ctx;
@@ -790,6 +811,176 @@ export class AudioEngine {
       };
     }
 
+    if (id === "crickets") {
+      // chirring summer night crickets — high-frequency stuttered chirps
+      let stopped = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      const playCall = () => {
+        const now = ctx.currentTime;
+        const callDur = 0.12 + Math.random() * 0.4;
+        const baseFreq = 4200 + Math.random() * 1500;
+        const osc = ctx.createOscillator();
+        osc.type = "triangle";
+        osc.frequency.value = baseFreq;
+        const env = ctx.createGain();
+        env.gain.setValueAtTime(0.0001, now);
+        osc.connect(env);
+        env.connect(gain);
+        // stutter envelope creates the buzzing chirr
+        const pulseRate = 30 + Math.random() * 10;
+        const pulses = Math.max(2, Math.floor(callDur * pulseRate));
+        for (let p = 0; p < pulses; p++) {
+          const t = now + p / pulseRate;
+          env.gain.setValueAtTime(0.0001, t);
+          env.gain.exponentialRampToValueAtTime(0.55, t + 0.005);
+          env.gain.exponentialRampToValueAtTime(0.0001, t + (0.9 / pulseRate));
+        }
+        osc.start(now);
+        osc.stop(now + callDur + 0.05);
+      };
+
+      const scheduleNext = () => {
+        if (stopped) return;
+        const delay = 120 + Math.random() * 700;
+        timer = setTimeout(() => {
+          if (stopped) return;
+          playCall();
+          scheduleNext();
+        }, delay);
+      };
+
+      return {
+        gain,
+        start: () => {
+          stopped = false;
+          scheduleNext();
+        },
+        stop: () => {
+          stopped = true;
+          if (timer) clearTimeout(timer);
+        },
+        volume: 0.45,
+        active: false,
+      };
+    }
+
+    if (id === "birds") {
+      // dawn chorus — short pitched whistles with frequency warble
+      let stopped = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      const playTweet = () => {
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        osc.type = "sine";
+        const startF = 1600 + Math.random() * 2400;
+        const dur = 0.09 + Math.random() * 0.22;
+        osc.frequency.setValueAtTime(startF, now);
+        osc.frequency.exponentialRampToValueAtTime(
+          startF * (1.15 + Math.random() * 0.25),
+          now + dur * 0.4,
+        );
+        osc.frequency.exponentialRampToValueAtTime(startF * 0.92, now + dur);
+        const env = ctx.createGain();
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.exponentialRampToValueAtTime(0.22, now + 0.015);
+        env.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+        osc.connect(env);
+        env.connect(gain);
+        osc.start(now);
+        osc.stop(now + dur + 0.05);
+      };
+
+      const scheduleNext = () => {
+        if (stopped) return;
+        const delay = 900 + Math.random() * 4200;
+        timer = setTimeout(() => {
+          if (stopped) return;
+          playTweet();
+          // occasional quick double-tweet
+          if (Math.random() < 0.35) {
+            setTimeout(() => {
+              if (!stopped) playTweet();
+            }, 120 + Math.random() * 150);
+          }
+          scheduleNext();
+        }, delay);
+      };
+
+      return {
+        gain,
+        start: () => {
+          stopped = false;
+          timer = setTimeout(() => {
+            if (stopped) return;
+            playTweet();
+            scheduleNext();
+          }, 1200);
+        },
+        stop: () => {
+          stopped = true;
+          if (timer) clearTimeout(timer);
+        },
+        volume: 0.45,
+        active: false,
+      };
+    }
+
+    if (id === "clock") {
+      // mechanical tick-tock — alternating bandpassed clicks every 1s
+      let stopped = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let count = 0;
+
+      const playTick = () => {
+        const now = ctx.currentTime;
+        const isTock = count % 2 === 1;
+        const click = ctx.createBufferSource();
+        const buf = ctx.createBuffer(1, ctx.sampleRate * 0.03, ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+          data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+        }
+        click.buffer = buf;
+        const bp = ctx.createBiquadFilter();
+        bp.type = "bandpass";
+        bp.frequency.value = isTock ? 2200 : 3000;
+        bp.Q.value = 2.5;
+        const env = ctx.createGain();
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.exponentialRampToValueAtTime(0.5, now + 0.002);
+        env.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+        click.connect(bp);
+        bp.connect(env);
+        env.connect(gain);
+        click.start(now);
+        click.stop(now + 0.07);
+        count++;
+      };
+
+      const scheduleTick = () => {
+        if (stopped) return;
+        playTick();
+        timer = setTimeout(scheduleTick, 1000);
+      };
+
+      return {
+        gain,
+        start: () => {
+          stopped = false;
+          count = 0;
+          scheduleTick();
+        },
+        stop: () => {
+          stopped = true;
+          if (timer) clearTimeout(timer);
+        },
+        volume: 0.4,
+        active: false,
+      };
+    }
+
     // tone — gentle dual sine for binaural-ish meditation tone
     const osc1 = ctx.createOscillator();
     const osc2 = ctx.createOscillator();
@@ -885,20 +1076,20 @@ export class AudioEngine {
   stopAll(): void {
     for (const t of this.tracks.values()) t.stop();
     this.tracks.clear();
-    if (this.master && this.ctx) {
+    if (this.fadeGain && this.ctx) {
       const now = this.ctx.currentTime;
-      this.master.gain.cancelScheduledValues(now);
-      this.master.gain.setValueAtTime(1, now);
+      this.fadeGain.gain.cancelScheduledValues(now);
+      this.fadeGain.gain.setValueAtTime(1, now);
     }
     this.notify();
   }
 
   fadeOutAndStop(seconds: number): void {
-    if (!this.ctx || !this.master) return;
+    if (!this.ctx || !this.fadeGain) return;
     const now = this.ctx.currentTime;
-    this.master.gain.cancelScheduledValues(now);
-    this.master.gain.setValueAtTime(this.master.gain.value, now);
-    this.master.gain.linearRampToValueAtTime(0.0001, now + seconds);
+    this.fadeGain.gain.cancelScheduledValues(now);
+    this.fadeGain.gain.setValueAtTime(this.fadeGain.gain.value, now);
+    this.fadeGain.gain.linearRampToValueAtTime(0.0001, now + seconds);
     if (this.fadeTimer) clearTimeout(this.fadeTimer);
     this.fadeTimer = setTimeout(
       () => {
@@ -914,12 +1105,83 @@ export class AudioEngine {
       clearTimeout(this.fadeTimer);
       this.fadeTimer = null;
     }
+    if (this.ctx && this.fadeGain) {
+      const now = this.ctx.currentTime;
+      this.fadeGain.gain.cancelScheduledValues(now);
+      this.fadeGain.gain.setValueAtTime(this.fadeGain.gain.value, now);
+      this.fadeGain.gain.linearRampToValueAtTime(1, now + 0.3);
+    }
+  }
+
+  getMasterVolume(): number {
+    return this.userVolume;
+  }
+
+  setMasterVolume(value: number): void {
+    const v = Math.max(0, Math.min(1, value));
+    this.userVolume = v;
+    if (this.muted) {
+      this.notify();
+      return;
+    }
     if (this.ctx && this.master) {
       const now = this.ctx.currentTime;
       this.master.gain.cancelScheduledValues(now);
       this.master.gain.setValueAtTime(this.master.gain.value, now);
-      this.master.gain.linearRampToValueAtTime(1, now + 0.3);
+      this.master.gain.linearRampToValueAtTime(v, now + 0.08);
     }
+    this.notify();
+  }
+
+  isMuted(): boolean {
+    return this.muted;
+  }
+
+  setMuted(muted: boolean): void {
+    if (this.muted === muted) return;
+    this.muted = muted;
+    if (this.ctx && this.master) {
+      const now = this.ctx.currentTime;
+      const target = muted ? 0 : this.userVolume;
+      this.master.gain.cancelScheduledValues(now);
+      this.master.gain.setValueAtTime(this.master.gain.value, now);
+      this.master.gain.linearRampToValueAtTime(target, now + 0.15);
+    }
+    this.notify();
+  }
+
+  toggleMuted(): void {
+    this.setMuted(!this.muted);
+  }
+
+  getSnapshot(): AudioSnapshot {
+    const active: SoundSnapshotEntry[] = [];
+    for (const [id, track] of this.tracks) {
+      if (track.active) active.push({ id, volume: track.volume });
+    }
+    return { active };
+  }
+
+  async applySnapshot(snapshot: AudioSnapshot): Promise<void> {
+    await this.ensure();
+    this.cancelFade();
+    const wanted = new Map<SoundId, number>();
+    for (const entry of snapshot.active) wanted.set(entry.id, entry.volume);
+
+    // Turn off any currently-active tracks not in the snapshot.
+    for (const [id, track] of this.tracks) {
+      if (track.active && !wanted.has(id)) {
+        await this.toggle(id);
+      }
+    }
+    // Apply volumes + turn on wanted tracks.
+    for (const [id, volume] of wanted) {
+      this.setVolume(id, volume);
+      if (!this.isActive(id)) {
+        await this.toggle(id);
+      }
+    }
+    this.notify();
   }
 }
 
