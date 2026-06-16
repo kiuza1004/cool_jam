@@ -11,7 +11,9 @@ export type SoundId =
   | "fan"
   | "wind"
   | "thunder"
-  | "stream";
+  | "stream"
+  | "hail"
+  | "bell";
 
 export interface SoundMeta {
   id: SoundId;
@@ -21,15 +23,17 @@ export interface SoundMeta {
 }
 
 export const SOUNDS: SoundMeta[] = [
-  { id: "rain", label: "빗소리", emoji: "🌧️", description: "잔잔한 비" },
+  { id: "rain", label: "빗소리", emoji: "🌧️", description: "차분한 비" },
+  { id: "hail", label: "우박", emoji: "🧊", description: "톡톡 떨어지는 우박" },
   { id: "thunder", label: "천둥", emoji: "⛈️", description: "먼 우레 소리" },
   { id: "waves", label: "파도 소리", emoji: "🌊", description: "느린 파도" },
   { id: "stream", label: "시냇물", emoji: "💧", description: "졸졸 흐르는 물" },
-  { id: "wind", label: "바람", emoji: "🌬️", description: "스치는 바람" },
+  { id: "wind", label: "바람", emoji: "🌬️", description: "느린 바람" },
   { id: "fireplace", label: "모닥불", emoji: "🔥", description: "타닥거리는 장작" },
   { id: "vacuum", label: "청소기 소리", emoji: "🌀", description: "꾸준한 모터음" },
   { id: "fan", label: "선풍기", emoji: "💨", description: "부드러운 바람" },
   { id: "chimes", label: "풍경 소리", emoji: "🎐", description: "은은한 메탈 종" },
+  { id: "bell", label: "교회 종소리", emoji: "⛪", description: "성당의 묵직한 종" },
   { id: "brown", label: "브라운 노이즈", emoji: "🟫", description: "깊고 묵직" },
   { id: "pink", label: "핑크 노이즈", emoji: "🌸", description: "따뜻한 잡음" },
   { id: "white", label: "백색 소음", emoji: "⚪", description: "균일한 잡음" },
@@ -151,24 +155,41 @@ export class AudioEngine {
     }
 
     if (id === "rain") {
-      const src = makeNoiseSource(ctx, "white");
+      // 차분하게 멀리서 — heavier low end, much darker tone, very slow density
+      const src = makeNoiseSource(ctx, "pink");
       const hp = ctx.createBiquadFilter();
       hp.type = "highpass";
-      hp.frequency.value = 700;
+      hp.frequency.value = 180;
       const lp = ctx.createBiquadFilter();
       lp.type = "lowpass";
-      lp.frequency.value = 5200;
+      lp.frequency.value = 1500;
+      const rainGain = ctx.createGain();
+      rainGain.gain.value = 0.7;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.025;
+      const lfoAmp = ctx.createGain();
+      lfoAmp.gain.value = 0.2;
+      lfo.connect(lfoAmp);
+      lfoAmp.connect(rainGain.gain);
       src.connect(hp);
       hp.connect(lp);
-      lp.connect(gain);
+      lp.connect(rainGain);
+      rainGain.connect(gain);
       return {
         gain,
-        start: () => src.start(),
+        start: () => {
+          src.start();
+          lfo.start();
+        },
         stop: () => {
           try {
             src.stop();
           } catch {}
+          try {
+            lfo.stop();
+          } catch {}
           src.disconnect();
+          lfo.disconnect();
         },
         volume: 0.6,
         active: false,
@@ -216,14 +237,14 @@ export class AudioEngine {
       // motor hum (sawtooth ~105Hz with slight vibrato) + suction (high-passed white)
       const hum = ctx.createOscillator();
       hum.type = "sawtooth";
-      hum.frequency.value = 105;
+      hum.frequency.value = 95;
       const humGain = ctx.createGain();
       humGain.gain.value = 0.05;
       const vibrato = ctx.createOscillator();
       vibrato.type = "sine";
-      vibrato.frequency.value = 5;
+      vibrato.frequency.value = 1.6;
       const vibratoAmp = ctx.createGain();
-      vibratoAmp.gain.value = 1.5;
+      vibratoAmp.gain.value = 0.9;
       vibrato.connect(vibratoAmp);
       vibratoAmp.connect(hum.frequency);
       hum.connect(humGain);
@@ -231,12 +252,12 @@ export class AudioEngine {
       const noise = makeNoiseSource(ctx, "white");
       const hp = ctx.createBiquadFilter();
       hp.type = "highpass";
-      hp.frequency.value = 1400;
+      hp.frequency.value = 1100;
       const lp = ctx.createBiquadFilter();
       lp.type = "lowpass";
-      lp.frequency.value = 7500;
+      lp.frequency.value = 5500;
       const noiseGain = ctx.createGain();
-      noiseGain.gain.value = 0.55;
+      noiseGain.gain.value = 0.5;
       noise.connect(hp);
       hp.connect(lp);
       lp.connect(noiseGain);
@@ -339,7 +360,7 @@ export class AudioEngine {
       let timer: ReturnType<typeof setTimeout> | null = null;
       const scheduleCrackle = () => {
         if (stopped) return;
-        const delay = 80 + Math.random() * 400;
+        const delay = 400 + Math.random() * 1800;
         timer = setTimeout(() => {
           if (stopped) return;
           const now = ctx.currentTime;
@@ -454,21 +475,21 @@ export class AudioEngine {
       lp.type = "lowpass";
       lp.frequency.value = 1800;
 
-      // filter-frequency LFO (sweeping)
+      // filter-frequency LFO (sweeping) — slower
       const sweepLfo = ctx.createOscillator();
-      sweepLfo.frequency.value = 0.08;
+      sweepLfo.frequency.value = 0.035;
       const sweepAmp = ctx.createGain();
-      sweepAmp.gain.value = 400;
+      sweepAmp.gain.value = 280;
       sweepLfo.connect(sweepAmp);
       sweepAmp.connect(bp.frequency);
 
-      // gain LFO (gusts)
+      // gain LFO (gusts) — slower
       const windAmp = ctx.createGain();
-      windAmp.gain.value = 0.6;
+      windAmp.gain.value = 0.55;
       const gustLfo = ctx.createOscillator();
-      gustLfo.frequency.value = 0.15;
+      gustLfo.frequency.value = 0.06;
       const gustAmp = ctx.createGain();
-      gustAmp.gain.value = 0.35;
+      gustAmp.gain.value = 0.3;
       gustLfo.connect(gustAmp);
       gustAmp.connect(windAmp.gain);
 
@@ -574,47 +595,197 @@ export class AudioEngine {
     }
 
     if (id === "stream") {
-      // bright trickling water = bandpass-shaped white noise + slow trickle LFO
-      const noise = makeNoiseSource(ctx, "white");
-      const hp = ctx.createBiquadFilter();
-      hp.type = "highpass";
-      hp.frequency.value = 1500;
-      const bp = ctx.createBiquadFilter();
-      bp.type = "bandpass";
-      bp.frequency.value = 3500;
-      bp.Q.value = 1.2;
-      const streamGain = ctx.createGain();
-      streamGain.gain.value = 0.55;
+      // 졸졸졸 — quiet flow noise + many tiny "burble" pitched bubbles
+      const flow = makeNoiseSource(ctx, "pink");
+      const flowBp = ctx.createBiquadFilter();
+      flowBp.type = "bandpass";
+      flowBp.frequency.value = 900;
+      flowBp.Q.value = 0.6;
+      const flowGain = ctx.createGain();
+      flowGain.gain.value = 0.18;
+      flow.connect(flowBp);
+      flowBp.connect(flowGain);
+      flowGain.connect(gain);
 
-      const trickleLfo = ctx.createOscillator();
-      trickleLfo.frequency.value = 4.5;
-      const trickleAmp = ctx.createGain();
-      trickleAmp.gain.value = 600;
-      trickleLfo.connect(trickleAmp);
-      trickleAmp.connect(bp.frequency);
+      let stopped = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
 
-      noise.connect(hp);
-      hp.connect(bp);
-      bp.connect(streamGain);
-      streamGain.connect(gain);
+      const playBurble = () => {
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        osc.type = "sine";
+        const startF = 260 + Math.random() * 480;
+        const endF = startF * (0.45 + Math.random() * 0.35);
+        const dur = 0.06 + Math.random() * 0.18;
+        osc.frequency.setValueAtTime(startF, now);
+        osc.frequency.exponentialRampToValueAtTime(endF, now + dur * 0.8);
+        const env = ctx.createGain();
+        const peak = 0.05 + Math.random() * 0.08;
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.exponentialRampToValueAtTime(peak, now + 0.006);
+        env.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+        osc.connect(env);
+        env.connect(gain);
+        osc.start(now);
+        osc.stop(now + dur + 0.05);
+      };
+
+      const scheduleBurble = () => {
+        if (stopped) return;
+        const delay = 50 + Math.random() * 220;
+        timer = setTimeout(() => {
+          if (stopped) return;
+          playBurble();
+          scheduleBurble();
+        }, delay);
+      };
 
       return {
         gain,
         start: () => {
-          noise.start();
-          trickleLfo.start();
+          stopped = false;
+          flow.start();
+          scheduleBurble();
         },
         stop: () => {
+          stopped = true;
+          if (timer) clearTimeout(timer);
+          try {
+            flow.stop();
+          } catch {}
+          flow.disconnect();
+        },
+        volume: 0.55,
+        active: false,
+      };
+    }
+
+    if (id === "hail") {
+      // continuous mid-band hiss + random sharp pings
+      const noise = makeNoiseSource(ctx, "pink");
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 1800;
+      bp.Q.value = 0.9;
+      const baseGain = ctx.createGain();
+      baseGain.gain.value = 0.4;
+      noise.connect(bp);
+      bp.connect(baseGain);
+      baseGain.connect(gain);
+
+      let stopped = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      const scheduleTap = () => {
+        if (stopped) return;
+        const delay = 90 + Math.random() * 280;
+        timer = setTimeout(() => {
+          if (stopped) return;
+          const now = ctx.currentTime;
+          const click = ctx.createBufferSource();
+          const buf = ctx.createBuffer(1, ctx.sampleRate * 0.05, ctx.sampleRate);
+          const data = buf.getChannelData(0);
+          for (let i = 0; i < data.length; i++) {
+            data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+          }
+          click.buffer = buf;
+          const hp = ctx.createBiquadFilter();
+          hp.type = "highpass";
+          hp.frequency.value = 2400;
+          const env = ctx.createGain();
+          const peak = 0.25 + Math.random() * 0.4;
+          env.gain.setValueAtTime(0.0001, now);
+          env.gain.exponentialRampToValueAtTime(peak, now + 0.003);
+          env.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+          click.connect(hp);
+          hp.connect(env);
+          env.connect(gain);
+          click.start(now);
+          click.stop(now + 0.08);
+          scheduleTap();
+        }, delay);
+      };
+
+      return {
+        gain,
+        start: () => {
+          stopped = false;
+          noise.start();
+          scheduleTap();
+        },
+        stop: () => {
+          stopped = true;
+          if (timer) clearTimeout(timer);
           try {
             noise.stop();
           } catch {}
-          try {
-            trickleLfo.stop();
-          } catch {}
           noise.disconnect();
-          trickleLfo.disconnect();
         },
-        volume: 0.6,
+        volume: 0.5,
+        active: false,
+      };
+    }
+
+    if (id === "bell") {
+      // additive synthesis approximation of a large church bell (Risset-style partials)
+      // ratios approximate hum / prime / tierce / quint / nominal / upper partials
+      const partials = [
+        { mult: 0.5, peak: 0.32, decay: 9 },
+        { mult: 1.0, peak: 0.45, decay: 8 },
+        { mult: 1.19, peak: 0.18, decay: 5.5 },
+        { mult: 1.5, peak: 0.16, decay: 5 },
+        { mult: 2.0, peak: 0.28, decay: 4.5 },
+        { mult: 2.5, peak: 0.12, decay: 3 },
+        { mult: 3.0, peak: 0.08, decay: 2.4 },
+        { mult: 4.5, peak: 0.05, decay: 1.6 },
+      ];
+
+      let stopped = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+
+      const playBell = () => {
+        const now = ctx.currentTime;
+        const base = 105 + Math.random() * 12;
+        for (const p of partials) {
+          const osc = ctx.createOscillator();
+          osc.type = "sine";
+          osc.frequency.value = base * p.mult;
+          const env = ctx.createGain();
+          env.gain.setValueAtTime(0.0001, now);
+          env.gain.exponentialRampToValueAtTime(p.peak * 0.45, now + 0.005);
+          env.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
+          osc.connect(env);
+          env.connect(gain);
+          osc.start(now);
+          osc.stop(now + p.decay + 0.1);
+        }
+      };
+
+      const scheduleNext = () => {
+        if (stopped) return;
+        const delay = 18000 + Math.random() * 32000;
+        timer = setTimeout(() => {
+          if (stopped) return;
+          playBell();
+          scheduleNext();
+        }, delay);
+      };
+
+      return {
+        gain,
+        start: () => {
+          stopped = false;
+          timer = setTimeout(() => {
+            if (stopped) return;
+            playBell();
+            scheduleNext();
+          }, 1500);
+        },
+        stop: () => {
+          stopped = true;
+          if (timer) clearTimeout(timer);
+        },
+        volume: 0.55,
         active: false,
       };
     }
